@@ -1,4 +1,5 @@
 ﻿using Neo4j.Driver.V1;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,8 +21,7 @@ namespace fhs_databases_zangerle_02
 
         static void Main(string[] args)
         {
-            //SeedDatabase();
-            Test(Path.Combine(DataExtractDirName, "members"));
+            SeedDatabase();
 
             Console.ReadLine();
         }
@@ -29,20 +29,8 @@ namespace fhs_databases_zangerle_02
 
         public static void SeedDatabase()
         {
-            SeedMembers();
-        }
-
-        public static void Test(string path)
-        {
-            var files = Directory.GetFiles(path);
-            foreach (var file in files)
-            {
-                Console.WriteLine($"Start parsing file: {file}");
-                var jsonRaw = ReadFile(file);
-                jsonRaw = jsonRaw.Replace("'", "''");
-                Console.WriteLine(jsonRaw);
-            }
-            
+            //SeedGroups();
+            //SeedMembers();
         }
 
 
@@ -55,18 +43,58 @@ namespace fhs_databases_zangerle_02
         }
 
 
+        public static void SeedGroups()
+        {
+            using (var driver = GraphDatabase.Driver("bolt://localhost", AuthTokens.Basic("neo4j", "pass")))
+            using (var session = driver.Session())
+            {
+                var files = Directory.GetFiles(Path.Combine(DataMiniDirName, "groups"));
+                foreach (var file in files)
+                {
+                    Console.WriteLine($"Start parsing file: {file}");
+                    var jsonRaw = ReadFile(file);
+                    jsonRaw = jsonRaw.Replace("'", "");
+                    dynamic array = JsonConvert.DeserializeObject(jsonRaw);
+
+                    if (array.Count == 0)
+                        continue;
+
+                    foreach (var group in array)
+                    {
+                        session.Run($"CREATE (n:Group{{id:'{group.id}', name:'{group.name}'}})");
+                    }
+                }
+                Console.WriteLine("Finished seeding groups");
+            }
+        }
+
         public static void SeedMembers()
         {
             using (var driver = GraphDatabase.Driver("bolt://localhost", AuthTokens.Basic("neo4j", "pass")))
             using (var session = driver.Session())
             {
-                session.Run("CREATE (a:Person {name:'Arthur', title:'King'})");
-                var result = session.Run("MATCH (a:Person) WHERE a.name = 'Arthur' RETURN a.name AS name, a.title AS title");
-
-                foreach (var record in result)
+                var files = Directory.GetFiles(Path.Combine(DataMiniDirName, "members"));
+                foreach (var file in files)
                 {
-                    Console.WriteLine($"{record["title"].As<string>()} {record["name"].As<string>()}");
+                    Console.WriteLine($"Start parsing file: {file}");
+                    var jsonRaw = ReadFile(file);
+                    jsonRaw = jsonRaw.Replace("'", "");
+                    dynamic array = JsonConvert.DeserializeObject(jsonRaw);
+
+                    if (array.Count == 0)
+                        continue;
+
+                    foreach (var member in array)
+                    {
+                        foreach (var topic in member.topics)
+                        {
+                            var stringToExecute = $"MERGE (member:Member{{id:'{member.id}',name:'{member.name}'}}) MERGE (topic:Topic{{id:'{topic.id}',name:'{topic.name}'}}) MERGE (member)-[:IsInterestedIn]->(topic)";
+                            Console.WriteLine(stringToExecute);
+                            session.Run(stringToExecute);
+                        }
+                    }
                 }
+                Console.WriteLine("Finished seeding members");
             }
         }
 
